@@ -19,12 +19,14 @@ OBJ_CPY=arm-none-eabi-objcopy
 
 
 
-test: $(ASM) $(BIN) clean build
+test: build_dirs clean build
 	mgba-qt $(BIN)/$(TARGET).gba
 
-build: $(ASM) $(BIN) $(TARGET).gba
+build: build_dirs $(TARGET).gba
 
-$(ASM) $(BIN):
+build_dirs: $(ASM) $(BIN) $(INC)
+
+$(ASM) $(BIN) $(INC):
 	mkdir -p $@
 
 $(TARGET).gba: $(TARGET).elf
@@ -37,9 +39,9 @@ $(TARGET).elf: $(S_OBJS)
 $(S_OBJS): $(BIN)/%.o : $(ASM)/%.s
 	$(AS) $(ASFLAGS) -c $< -o $@
 
-clean: $(ASM) $(BIN)
-	@rm -fv $(BIN)/*.{elf,o,gba}
+clean: $(BIN)
+	@rm -fv $</*.{elf,o,gba}
 
-clr_sram:
-	@rm -fv $(BIN)/*.sav
+clr_sram: $(BIN)
+	@rm -fv $</*.sav
 
