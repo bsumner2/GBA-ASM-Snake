@@ -191,14 +191,15 @@ lfsr_shift:
     .global lfsr_rand
     .type lfsr_rand %function
 lfsr_rand:
-    PUSH {lr}
+    PUSH {r4, lr}  // Save clean regs, lr and r4 by pushing onto stack in that order.
     LDR r0, =LFSR
-    LDRH r0, [r0]
-    PUSH {r0}
-    BL lfsr_shift
-    POP {r0}
+    LDRH r4, [r0]  // r4 = *((u16*) (r0)) = *((u16*) (&LFSR)) = *(&LFSR.state) = LFSR.state
 
-    POP {r2}
+    BL lfsr_shift
+
+    MOV r0, r4  // r0 = ret = r4 = (pre-shift LFSR.state)
+    POP {r4}  // Pop r4's initial value off stack
+    POP {r2}  // Pop lr into r2 and return via r2
 
     BX r2
     .size lfsr_rand, .-lfsr_rand
@@ -315,6 +316,28 @@ draw_grid:
     BX r3
     .size draw_grid, .-draw_grid
 
+// FUNCTION: rand_grid_idx
+    .thumb_func
+    .align 2
+    .global rand_grid_idx
+    .type rand_grid_idx %function
+rand_grid_idx:
+    PUSH {lr}
+    BL lfsr_rand
+    // Now, r0 = lfsr state
+    MOV r1, #0x96  // r1 = 0x96 = 150
+    LSL r1, #4  // r1 <<= 4 : r1 = 0x96<<4 = 150*16 = 0x960 = 2400
+
+    // Remember: With __aeabi_uidivmod, r0 holds quotient and r1 holds remainder upon return
+    BL __aeabi_uidivmod
+    // Now, r0 = state/2400 and r1 = state%2400. Want to return val in r1, 
+    
+    // so move into r0 the value in r1:
+    MOV r0, r1 
+
+    POP {r1}  // Pop return addr into r1
+    BX r1  // return via r1
+    .size rand_grid_idx, .-rand_grid_idx
 
 // FUNCTION: main
 	.section	.text.startup,"ax",%progbits
@@ -346,12 +369,15 @@ main:
         CMP r0, #0
         BNE .Lmain_wait_for_start
 
-    BL lfsr_rand
+    /*BL lfsr_rand
     MOV r1, #150
     LSL r1, #4
     BL __aeabi_uidivmod
     // Remember: With __aeabi_uidivmod, r0 holds quotient and r1 holds remainder upon return
-    MOV r0, r1  // Therefore, move value in r1 into r0
+    MOV r0, r1  // Therefore, move value from r1 into r0, since we want rand()%2400, not rand()/2400
+    */
+    BL rand_grid_idx
+    // Now r0 = lfsr_rand()%2400
     LDR r1, =GRID_A
     MOV r2, #1
     STRB r2, [r1, r0]
