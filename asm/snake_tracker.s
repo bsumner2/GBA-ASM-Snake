@@ -41,7 +41,7 @@ S_Snake_Body:
     .thumb_func
     .align 2
     .global node_alloc
-    .type node_alloc, %function
+    .type node_alloc %function
 node_alloc: 
     // r0 = grid x
     // r1 = grid y
@@ -69,7 +69,7 @@ node_alloc:
     .thumb_func
     .align 2
     .global coord_to_grid_idx
-    .type coord_to_grid_idx, %function
+    .type coord_to_grid_idx %function
 coord_to_grid_idx:
     // r0 = x
     // r1 = y
@@ -90,7 +90,7 @@ coord_to_grid_idx:
     .thumb_func
     .align 2
     .global snake_init
-    .type snake_init, %function
+    .type snake_init %function
 snake_init:
     // r0 = Grid Buffer
     PUSH {r4, r5, lr}

@@ -348,6 +348,18 @@ rand_grid_idx:
     BX r1  // return via r1
     .size rand_grid_idx, .-rand_grid_idx
 
+    .thumb_func
+    .align 2
+    .global handle_movement
+    .type handle_movement %function
+handle_movement:
+    // r0: movement direction bfield val
+    // r1: snake LL
+    // r2: game grid
+    // Todo: Left off here. Continue from here.
+    
+    .size handle_movement, .-handle_movement
+
 // FUNCTION: main
 	.section	.text.startup,"ax",%progbits
     .thumb_func
@@ -388,7 +400,7 @@ main:
 
     LDR r0, =GRID_A
     BL snake_init
-    MOV r4, r0
+    MOV r5, r0
 
 .Lmain_find_empty_for_apple:
         BL rand_grid_idx
@@ -414,10 +426,23 @@ main:
     STRB r2, [r1, r0]
     MOV r0, r1
     BL draw_grid
-    
+#define CURR_DIR_L 0
+#define CURR_DIR_D 1
+#define CURR_DIR_U 2
+#define CURR_DIR_R 4
+    MOV r4, #CURR_DIR_R
+    LDR r6, =GRID_A
 .Lmain_inf_loop:
-    BL vsync
-    
-    B .Lmain_inf_loop
+        BL vsync
+        BL poll_keys
+
+        MOV r0, r4  // r0 = mvmnt direction
+        MOV r1, r5  // Snake body
+        MOV r2, r6  // grid
+        BL handle_movement
+        
+        
+        BL draw_grid
+        B .Lmain_inf_loop
 
     .size main, .-main
