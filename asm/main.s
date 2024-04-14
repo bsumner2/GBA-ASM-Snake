@@ -5,6 +5,15 @@
 #define CELL_APPLE 2
 #define GRID_CELL_SIZE 4
 
+#define START_COORD_X 10
+#define START_COORD_Y 20
+
+#define START_GRID_IDX 1210
+
+
+.extern snake_init
+.extern coord_to_grid_idx
+
     .section .bss
     .align 2
     .global GRID_A
@@ -355,7 +364,7 @@ main:
     LSL r1, r2
     ORR r1, r2
     STR r1, [r0]
-    
+
     LDR r0, =RNG_Seed
     LDRH r0, [r0]
     MOV r1, #10
@@ -376,10 +385,32 @@ main:
     // Remember: With __aeabi_uidivmod, r0 holds quotient and r1 holds remainder upon return
     MOV r0, r1  // Therefore, move value from r1 into r0, since we want rand()%2400, not rand()/2400
     */
-    BL rand_grid_idx
-    // Now r0 = lfsr_rand()%2400
+
+    LDR r0, =GRID_A
+    BL snake_init
+    MOV r4, r0
+
+.Lmain_find_empty_for_apple:
+        BL rand_grid_idx
+        // Now r0 = lfsr_rand()%2400 = apple's random start spot.
+        // but first gotta make sure that the spot is vacant
+
+        // r1 = snake head's init start grid idx::
+        MOV r1, #128
+        LSL r1, #3  // r1 <<= 3 = (1<<7)<<3 = 1<<10 = 1024
+        ADD r1, #186  // r1 = 1024 + (1210-1024=186)
+        CMP r0, r1  // Check random apple spot isn't same as snake head's initial spot
+        BEQ .Lmain_find_empty_for_apple  // If they are same, get new random idx.
+        SUB r1, #1  // --r1 : the snake tail's init start grid idx
+        CMP r0, r1  // Check rand idx isn't same as snake tails init spot
+        BEQ .Lmain_find_empty_for_apple  // If they are the same, get new random idx
+
+    
+
+
+
     LDR r1, =GRID_A
-    MOV r2, #1
+    MOV r2, #CELL_APPLE
     STRB r2, [r1, r0]
     MOV r0, r1
     BL draw_grid
