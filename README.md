@@ -35,8 +35,13 @@ Work in progress.
 - [ ] Point Tracker
 - [x] Collision Checker
 - [x] Bind Controls to Game Functions (e.g.: movement, pause/resume, menus, etc.)
-- [ ] Optimize input handler. Maybe just read directly from REG_KEY and only use poll_keys for RNG
-   state manipulation.
+- [x] Optimize input handler. Maybe just read directly from REG_KEY and only use poll_keys for RNG
+   state manipulation.[^3]
+- [ ] Beautification:
+    - [ ] Adding sound
+    - [ ] Adding text engine
+    - [ ] Full menu system
+    - [ ] Non-barebones pause screen
 
 [^1]: This is the preferred choice given the simplicity of the game.
     Neither really strapped for cycle counts nor RAM, so the time and
@@ -49,4 +54,7 @@ Work in progress.
     tracking the body would incur too much time overhead: definitely far 
     more than what the RAM, that we would save from foregoing the LL approach,
     would be worth.
+[^3]: Upon further inspection on actual hardware, I think the controls run tight enough.
+    I do wish it was easier to make very quick U-turns with no medial row/column in between.
+    Maybe in the future I can try to improve it, but for now, my focus will be on beautification.
 
