@@ -3,14 +3,15 @@
     .extern free
     .extern malloc
 
-#define SIZEOF_NODE 8
+#define SIZEOF_NODE 12
 /*
  * Node: ---------- base addr (addr+0)
  *  X Coord : ushort : HWORD   addr+0
  *  Y Coord : ushort : HWORD   addr+2
- *  Link    :  ptr   : WORD    addr+4
- *------------------ end addr (addr+8)
- * Therefore sizeof(LL Node) = 8
+ *  Next    :  ptr   : WORD    addr+4
+ *  Prev    :  ptr   : WORD    addr+8
+ *------------------ end addr (addr+12)
+ * Therefore sizeof(LL Node) = 12
  */
 
 #define START_COORD_X 10
@@ -25,6 +26,25 @@
 
 #define SNAKE_INIT_LEN 2
 
+/*
+ * = Linked List Visual:
+ *    - Head->next links to body segment behind head.
+ *    - Head->prev links circularly back to tail
+ *    = LL as C struct:
+ *        struct LL {
+ *          struct LL_Node *head;
+ *          struct LL_Node *tail;
+ *          unsigned short len;
+ *        }
+ *    = LL Node as C struct:
+ *        struct LL_Node {
+ *          ushort x;
+ *          ushort y;
+ *          struct LL_Node *next;
+ *          struct LL_Node *prev;
+ *        }
+ */
+
 
     .section .bss
     .align 2
@@ -33,6 +53,9 @@ S_Snake_Body:
     .space 4  // Tail : Node*
     .space 2  // Length
     .size S_Snake_Body, .-S_Snake_Body
+
+
+
 
 
 
@@ -46,12 +69,14 @@ node_alloc:
     // r0 = grid x
     // r1 = grid y
     // r2 = next ptr
-    PUSH {r4, r5, r6, lr}
+    // r3 = prev ptr
+    PUSH {r4, r5, r6, r7, lr}
     
     // Save param vals to GP regs b4 calling malloc
     MOV r4, r0  // r4 = r0 = x
     MOV r5, r1  // r5 = r1 = y
-    MOV r6, r2  // r6 = r2 = link ptr
+    MOV r6, r2  // r6 = r2 = next ptr
+    MOV r7, r3  // r7 = r3 = prev
     
     // Move malloc param value into r0
     MOV r0, #SIZEOF_NODE
@@ -59,12 +84,93 @@ node_alloc:
     
     STRH r4, [r0]  // *((u16*) (&node + 0)) = node.x = r4 = x coord
     STRH r5, [r0, #2]  // *((u16*) (&node + 2)) = node.y = r5 = y coord
-    STRH r6, [r0, #4]  // *((node**) (&node + 4)) = node.link = r6 = link ptr
+    STR r6, [r0, #4]  // *((node**) (&node + 4)) = node.next = r6 = front link ptr
+    STR r7, [r0, #8]  // *((node**) (&node + 8)) = node.prev = r7 =  back link ptr
 
-    POP {r4-r6}
+    POP {r4-r7}
     POP {r1}
     BX r1
     .size node_alloc, .-node_alloc
+
+
+    .thumb_func
+    .align 2
+    .global snake_grow
+    .type snake_grow %function
+snake_grow:
+    // r0:newhead.x r1:newhead.y r2:LL
+    PUSH {r4, lr}
+    // When snake grows, new head appended at apple location
+    MOV r4, r2  // Save LL addr in r4
+    
+    // First, update len
+    LDRH r2, [r4, #8]
+    ADD r2, #1
+    STRH r2, [r4, #8]
+    
+    // already have first 2 node alloc params:
+    // r0 = x
+    // r1 = y
+    // Just need node_alloc's 3rd and 4th args in r2, r3:
+    // r2 = newhead.next = old head = LL->head
+    LDR r2, [r4]
+    
+    // r3 = newhead.prev = head's circular link back to tail = LL->tail
+    LDR r3, [r4, #4]
+
+    // CALL: node_alloc(newhead.x : x_coord, newhead.y : y_coord, oldhead : next, tail : prev)
+    BL node_alloc
+    
+    LDR r1, [r4]  // r1 = LL->head = old head
+    STR r0, [r4]  // LL->head = new head
+    STR r0, [r1, #8]  // (oldhead: new body1)->prev = new head
+
+    LDR r1, [r4, #4]  // r1 = (LL->tail). Put tail into r1
+    STR r0, [r1, #4]  // tail->next = new head
+
+
+
+    POP {r4}
+
+    POP {r1}
+    BX r1
+    .size snake_grow, .-snake_grow
+
+    .thumb_func
+    .align 2
+    .global snake_move
+    .type snake_move %function
+snake_move:
+    // r0 = new head x, r1 = new head y, r2 = LL
+    // Recycle tail node for new head node. Simulates the movement quite nicely
+    LDR r3, [r2, #4]  // r3 = LL->tail  : r3 has tail ptr which we recycle as new head ptr
+    STR r3, [r2]  // LL->head = LL->tail : Overwrite LL->head w/ old tail, making tail new head
+
+
+    // Additionally, due to double-linked and circular linkage design, we don't even need to
+    // change any of the nodes' links. Just update LL->head = LL->tail, and LL->tail = LL->tail->prev,
+    // along with changing old tail's coord values to reflect the new head's location, obviously.
+    // So our checklist is:
+    // Task 1. [x] Make LL->head point to recycled tail node, i.e.: overwrite LL->head w/ LL->tail
+    // Task 2. [ ] Change tail coords to be new head coords
+    // Task 3. [ ] Make LL->tail = LL->tail->prev, since LL->tail->prev is really just new_head->prev, 
+    //             which, as head node, circulates back to tail
+    
+    
+    STRH r0, [r3]  // new head->x = r0: param'd x coord
+    STRH r1, [r3, #2]  // new head->y = r1: param'd y coord
+    // Task 2. [x]
+    
+    // Done with params in r0, r1, so we can use em for other stuff,
+    // and save on the overhead of relying on the clean GP LO regs, r4-r7
+    LDR r0, [r3, #8]  // r0 = LL->tail->prev : r0 has new tail ptr
+    STR r0, [r2, #4]  // LL->tail = LL->tail->prev
+    // Task 3. [x]
+
+    // AAAND we're done! Can exit without having to pop to restore any regs, or anything at all!
+    // Such a refreshment after having to conjure up the mess that was main.s's handle_movement function.
+    BX lr
+    .size snake_move, .-snake_move
 
     .thumb_func
     .align 2
@@ -86,6 +192,24 @@ coord_to_grid_idx:
     BX lr
     .size coord_to_grid_idx, .-coord_to_grid_idx
 
+    .thumb_func
+    .align 2
+    .global grid_idx_to_coord
+    .type grid_idx_to_coord %function
+grid_idx_to_coord:
+    // r0 = grid idx
+    PUSH {lr}
+    MOV r1, #GRID_WIDTH  // r0 = grid idx, r1 = grid width
+    BL __aeabi_uidivmod
+    // Now, r0 = quotient, r1 = remainder, so r0 = grid_idx/grid_width = y, r1 = grid_idx%grid_width = x
+    MOV r2, r0  // Temporarily put y into r2
+    MOV r0, r1  // Move x into r0
+    MOV r1, r2  // Move y (which was tmp'd into r2) into r1
+
+    POP {r2}
+    BX r2
+    .size grid_idx_to_coord, .-grid_idx_to_coord
+
 
     .thumb_func
     .align 2
@@ -102,19 +226,25 @@ snake_init:
 
     LDR r4, =S_Snake_Body  // r4 = LL
     
-    BL node_alloc  // alloc the node
+    BL node_alloc  // alloc the tail node
 
     STR r0, [r4, #4]  // assign addr of alloc'd node to LL->tail
     
-    MOV r2, r0  // r2 = alloc_node param no. 3: tail addr as link for head node we're about to alloc
-    MOV r0, #START_COORD_X  // r0 = alloc_node param no. 1: x coord for head
-    MOV r1, #START_COORD_Y  // r1 = alloc_node param no. 2: y coord for head
+    MOV r3, r0  // r3 = alloc_node param no. 4: tail addr as back link for head we're about to alloc
+    MOV r2, r0  // r2 = alloc_node param no. 3: tail addr as front link, too
+    MOV r1, #START_COORD_Y  // r1 = alloc_node param no. 2: y coord
+    MOV r0, #START_COORD_X  // r0 = alloc_node param no. 1: x coord
     BL node_alloc
 
     STR r0, [r4]  // LL->head = (head:new node)
     // MOV r4, r0  // Put LL->head (=head) into r4
     // LDRH r0, [r4] // r0 = head->x
     // LDRH r1, [r4, #2]  // r1 = head->y
+    LDR r1, [r4, #4]  // r1 = tail
+    STR r0, [r1, #4]  // tail->next = head
+    STR r0, [r1, #8]  // tail->prev = head
+    
+
     
     // BL coord_to_grid_idx  // r0 = coord_to_grid_idx(r0, r1) = coord_to_grid_idx(head.x, head.y) = head grid idx
     MOV r0, #128

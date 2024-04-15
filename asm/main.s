@@ -12,6 +12,8 @@
 
 
 .extern snake_init
+.extern snake_grow
+.extern snake_move
 .extern coord_to_grid_idx
 
     .section .bss
@@ -348,6 +350,15 @@ rand_grid_idx:
     BX r1  // return via r1
     .size rand_grid_idx, .-rand_grid_idx
 
+#define CURR_DIR_L 0
+#define CURR_DIR_D 1
+#define CURR_DIR_U 2
+#define CURR_DIR_R 3
+
+#define HNDL_MVMNT_COLLISION -1
+#define HNDL_MVMNT_OK 0
+#define HNDL_MVMNT_APPLE_COLLECTED 1
+
     .thumb_func
     .align 2
     .global handle_movement
@@ -357,8 +368,253 @@ handle_movement:
     // r1: snake LL
     // r2: game grid
     // Todo: Left off here. Continue from here.
+    PUSH {r4, r5, lr}
+    MOV r4, r1  // put LL addr into r4
+    MOV r5, r2  // keep game grid in r5
+
+    MOV r2, r0  // Move the movement direction flag, out of r0, into r2
     
+    LDR r3, [r4]  // r3 = LL->head
+    LDRH r0, [r3]  // r0 = head.x
+    LDRH r1, [r3, #2]  // r1 = head.y
+
+    CMP r2, #CURR_DIR_U
+    BGE .Lhndlmvmnt_uppercheck
+    CMP r2, #CURR_DIR_D
+    BEQ .Lhndlmvmnt_DOWN
+    B .Lhndlmvmnt_LEFT
+
+
+
+.Lhndlmvmnt_LEFT:
+    CMP r0, #0
+    BEQ .Lhndlmvmnt_hit_wall
+    SUB r0, #1  // head.x -= 1 = newhead.x 
+    B .Lhndlmvmnt_check_availability
+.Lhndlmvmnt_DOWN:
+    CMP r1, #39
+    BEQ .Lhndlmvmnt_hit_wall
+    ADD r1, #1
+    B .Lhndlmvmnt_check_availability
+
+.Lhndlmvmnt_uppercheck:
+    BNE .Lhndlmvmnt_RIGHT
+
+.Lhndlmvmnt_UP:
+    CMP r1, #0
+    BEQ .Lhndlmvmnt_hit_wall
+    SUB r1, #1
+    B .Lhndlmvmnt_check_availability
+.Lhndlmvmnt_RIGHT:
+    CMP r0, #59
+    BEQ .Lhndlmvmnt_hit_wall
+    ADD r0, #1
+.Lhndlmvmnt_check_availability:
+    PUSH {r6}
+    SUB sp, #4  // alloc space for (x,y) on stack
+    MOV r6, sp
+
+    STRH r0, [r6]  // PUSH as HWORD r0 := new head x
+    STRH r1, [r6, #2]  // PUSH as HWORD r1 := new head y
+    // I.E: push newhead.(x,y) onto stack
+
+    BL coord_to_grid_idx  // get newhead's grid coord
+    LDRB r1, [r5, r0]  // r1 = r5[r0] = grid[newhead grid idx]
+    CMP r1, #CELL_SNAKE
+    BEQ .Lhndlmvmnt_hit_self  // if snake collided with self
+    CMP r1, #CELL_APPLE
+    BEQ .Lhndlmvmnt_eat_apple
+.Lhndlmvmnt_ok:
+
+    LDR r0, [r4, #4]  // r0 = LL->tail = tail
+    LDRH r1, [r0, #2]  // r1 = tail->y
+    LDRH r0, [r0]  // r0 = tail->x
+    
+    BL coord_to_grid_idx  // CALL: coord_to_grid_idx(tail->x, tail->y)
+    MOV r1, #CELL_EMPTY
+    STRB r1, [r5, r0]  // Overwrite previous tail cell with blank cell as snake advanced to new head location
+     
+    LDRH r0, [r6]  // r0 = newhead.x
+    LDRH r1, [r6, #2] // r1 = newhead.y
+    MOV r2, r4  // r2 = LL
+    BL snake_move  // CALL: snake_move(newhead.x, newhead.y, LL) : update snake linked list
+    // Now, LL updated. We advanced the tail on buffer. Now just need to do the same for the head
+    LDRH r0, [r6]
+    LDRH r1, [r6, #2]
+    ADD sp, #4  // After this, we're done with newhead.(x,y), so dealloc it from stack
+    POP {r6}  // and pop r6 off stack too
+    
+    BL coord_to_grid_idx  // CALL: coord_to_grid_idx(newhead.x, newhead.y) 
+    // now, r0 = new head's grid index
+    MOV r1, #CELL_SNAKE
+    STRB r1, [r5, r0]  // r5[r0] = r1 : grid[new head index] = CELL_SNAKE (=1)
+    
+    // Aaand we're finally done with writing this god-foresaken function.
+    // Can simply pop the shit we had to save off stack return
+
+    POP {r4, r5}
+    POP {r1}
+    MOV r0, #HNDL_MVMNT_OK
+    BX r1
+.Lhndlmvmnt_eat_apple:
+    MOV r1, #CELL_SNAKE
+    STRB r1, [r5, r0]  // update grid cell w/ new head
+    LDRH r0, [r6]  // get newhead.x back off stack into r0
+    LDRH r1, [r6, #2]  // same w/ newhead.y
+    ADD sp, #4  // dealloc newhead.(x,y) off stack
+    POP {r6}
+    
+    MOV r2, r4  // put LL into r2
+
+    BL snake_grow  // CALL: snake_grow(newhead.x, newhead.y, LL)
+    
+    POP {r4, r5}
+    POP {r1}
+    MOV r0, #HNDL_MVMNT_APPLE_COLLECTED
+    BX r1
+.Lhndlmvmnt_hit_self:
+    ADD sp, #4  // dealloc new head coords off stack
+    POP {r6}
+.Lhndlmvmnt_hit_wall:
+    POP {r4, r5}
+    POP {r1}
+    MOV r0, #0
+    SUB r0, #1  // If game over collision, make r0 = RETURN VALUE = -1
+    BX r1
+
     .size handle_movement, .-handle_movement
+
+
+#define KEY_LEFT 32
+#define KEY_DOWN 128
+#define KEY_UP 64
+#define KEY_RIGHT 16
+#define KEY_START 8
+
+    .thumb_func
+    .align 2
+    .global handle_input
+    .type handle_input %function
+handle_input:
+    // r0 = key reg state, r1 = current direction
+    MOV r2, #KEY_START
+    AND r2, r0  // r3 = r0&r2 = REG_KEY&KEY_START
+    
+    CMP r2, #0
+    BNE .Lhndlinput_no_pause
+
+    MOV r0, #0
+    SUB r0, #1 // return value = -1 means pause requested
+    BX lr
+.Lhndlinput_no_pause:
+    CMP r1, #CURR_DIR_U
+    BGE .Lhndlinput_upper_dircheck
+    CMP r1, #CURR_DIR_L
+    BEQ .Lhndlinput_DIR_R_or_L
+    B .Lhndlinput_DIR_U_or_D
+.Lhndlinput_upper_dircheck:
+    BNE .Lhndlinput_DIR_R_or_L
+.Lhndlinput_DIR_U_or_D:
+    MOV r2, #KEY_LEFT
+    MOV r3, #KEY_RIGHT
+    ORR r2, r3  // r2 = KEY_LEFT|KEY_RIGHT
+    MOV r3, r2  // r3 = KEY_LEFT|KEY_RIGHT, too
+    AND r3, r0  // r3 = REG_KEY&(KEY_LEFT|KEY_RIGHT)
+    CMP r3, r2
+    // If REG_KEY&(KEY_LEFT|KEY_RIGHT) == (KEY_LEFT|KEY_RIGHT), then
+    // neither left nor right are being pressed. No direction change,
+    // return param 2: r1=current dir.
+    BEQ .Lhndlinput_no_change
+    MOV r2, #KEY_RIGHT
+    AND r2, r0
+    CMP r2, #0
+    BEQ .Lhndlinput_change_R
+    MOV r0, #CURR_DIR_L
+    BX lr
+.Lhndlinput_change_R:
+    MOV r0, #CURR_DIR_R
+    BX lr
+    
+.Lhndlinput_DIR_R_or_L:
+    MOV r2, #KEY_DOWN
+    MOV r3, #KEY_UP
+    ORR r2, r3  // r2 = KEY_DOWN|KEY_UP
+    MOV r3, r2  // r3 = r2 = K_DOWN|K_UP
+    AND r3, r0  // r3 = REG_KEY&(KEY_DOWN|KEY_UP)
+    CMP r3, r2
+    // If REG_KEY&(KEY_DOWN|KEY_UP) == (KEY_DOWN|KEY_UP), then
+    // neither down nor up are being pressed. No direction change,
+    // return param 2: r1=current dir.
+    BEQ .Lhndlinput_no_change
+    MOV r2, #KEY_UP
+    AND r2, r0
+    CMP r2, #0
+    BEQ .Lhndlinput_change_U
+    MOV r0, #CURR_DIR_D
+    BX lr
+.Lhndlinput_change_U:
+    MOV r0, #CURR_DIR_U
+    BX lr
+
+.Lhndlinput_no_change:
+    MOV r0, r1  // return current direction
+    BX lr
+    
+    .size handle_input, .-handle_input
+
+
+    .thumb_func
+    .align 2
+    .global pause
+    .type pause %function
+pause:
+    PUSH {lr}
+.Lpause_debounceloop:
+        BL poll_keys
+        MOV r1, #KEY_START
+        AND r1, r0
+        CMP r1, #0
+        BEQ .Lpause_debounceloop
+.Lpause_waitloop:
+        BL poll_keys
+        MOV r1, #KEY_START
+        AND r1, r0
+        CMP r1, #0
+        BNE .Lpause_waitloop
+
+
+
+    POP {r0}
+    BX r0
+    .size pause, .-pause
+
+
+
+    .thumb_func
+    .align 2
+    .global spawn_new_apple
+    .type spawn_new_apple %function
+spawn_new_apple:
+    // r0 = grid
+    PUSH {r4, lr}
+    MOV r4, r0
+.Lsnewapple_find_empty_grid_idx:
+        BL rand_grid_idx
+        // Now r0 = lfsr_rand()%2400 = random grid spot for next apple.
+        // but first gotta make sure that the spot is vacant
+        LDRB r1, [r4, r0]  // r1 = r4[r0] = grid[rand()%2400]
+        CMP r1, #CELL_EMPTY
+        BNE .Lsnewapple_find_empty_grid_idx  // If they are same, get new random idx.
+    // Now, r0 has new apple idx
+    MOV r1, #CELL_APPLE
+    STRB r1, [r4, r0]  // r4[r0] = r1 : grid[random empty idx] = apple
+
+    POP {r4}
+    POP {r1}
+
+    BX r1
+
+    .size spawn_new_apple, .-spawn_new_apple
 
 // FUNCTION: main
 	.section	.text.startup,"ax",%progbits
@@ -376,6 +632,7 @@ main:
     LSL r1, r2
     ORR r1, r2
     STR r1, [r0]
+    PUSH {lr}
 
     LDR r0, =RNG_Seed
     LDRH r0, [r0]
@@ -400,7 +657,7 @@ main:
 
     LDR r0, =GRID_A
     BL snake_init
-    MOV r5, r0
+    MOV r5, r0  // r5 = snake LL
 
 .Lmain_find_empty_for_apple:
         BL rand_grid_idx
@@ -426,23 +683,54 @@ main:
     STRB r2, [r1, r0]
     MOV r0, r1
     BL draw_grid
-#define CURR_DIR_L 0
-#define CURR_DIR_D 1
-#define CURR_DIR_U 2
-#define CURR_DIR_R 4
+
     MOV r4, #CURR_DIR_R
     LDR r6, =GRID_A
+    BL vsync
+    B .Lmain_first_pass_loop  // skip input polling for first pass so that 
+    //                           for each value assignment of r4=current direction,
+    //                           handle_movement called **at least once**.
 .Lmain_inf_loop:
         BL vsync
         BL poll_keys
-
+        // r0 = ret from poll_keys = REG_KEY state
+        MOV r1, r4  // r1 = mvmnt direction
+        BL handle_input
+        MOV r1, #0
+        SUB r1, #1
+        CMP r0, r1
+        BNE .Lmain_no_pause
+        BL pause
+        B .Lmain_first_pass_loop  // Skip the next part, since no direction 
+        //                           flag values are -1, so running what's below
+        //                           would cause a soft-locking error as r4 will
+        //                           always be set to -1 in this scenario.
+.Lmain_no_pause:
+        CMP r0, r4
+        BEQ .Lmain_first_pass_loop  // Name irrelevant, it just so happens that 
+        //                             the first pass loop label is exactly where
+        //                             I would want to jump to when r4 == r0.
+        //                             If they !=, then update r4 w/ new direction
+        MOV r4, r0  // If direction change, update r4 accordingly
+        
+.Lmain_first_pass_loop:
         MOV r0, r4  // r0 = mvmnt direction
-        MOV r1, r5  // Snake body
-        MOV r2, r6  // grid
+        MOV r1, r5  // r1 = Snake body LL
+        MOV r2, r6  // r2 = grid
         BL handle_movement
+        CMP r0, #HNDL_MVMNT_OK
+        BLT .Lmain_gameover
+        BEQ .Lmain_drawgrid
         
-        
+        MOV r0, r6
+        BL spawn_new_apple
+
+.Lmain_drawgrid:
+        MOV r0, r6  // r0 = grid
         BL draw_grid
         B .Lmain_inf_loop
+.Lmain_gameover:
+    POP {r3}
+    MOV pc, r3
 
     .size main, .-main

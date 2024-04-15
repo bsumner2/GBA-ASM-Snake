@@ -4,12 +4,11 @@ endif
 
 TARGET=$(PROJ_NAME)
 ASM=./asm
-INC=./include
 BIN=./bin
 S_OBJS=$(shell find ./asm -iname *.s -type f | sed 's/\.s/\.o/g' | sed 's-/asm-/bin-g')
 AS=arm-none-eabi-gcc
 LD=$(AS)
-ASFLAGS=-xassembler-with-cpp -I$(INC)
+ASFLAGS=-xassembler-with-cpp
 LDFLAGS=-mthumb-interwork -mthumb -specs=gba.specs
 OBJ_CPY=arm-none-eabi-objcopy
 
@@ -24,9 +23,9 @@ test: build_dirs clean build
 
 build: build_dirs $(TARGET).gba
 
-build_dirs: $(ASM) $(BIN) $(INC)
+build_dirs: $(ASM) $(BIN)
 
-$(ASM) $(BIN) $(INC):
+$(ASM) $(BIN):
 	mkdir -p $@
 
 $(TARGET).gba: $(TARGET).elf
