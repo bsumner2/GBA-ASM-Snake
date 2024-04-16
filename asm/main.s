@@ -10,11 +10,42 @@
 
 #define START_GRID_IDX 1210
 
+#define RATE_C    0x0
+#define RATE_CIS  0x1
+#define RATE_D    0x2
+#define RATE_DIS  0x3
+#define RATE_E    0x4
+#define RATE_F    0x5
+#define RATE_FIS  0x6
+#define RATE_G    0x7
+#define RATE_GIS  0x8
+#define RATE_A    0x9
+#define RATE_BES  0xA
+#define RATE_B    0xB
+
+
+
 
 .extern snake_init
 .extern snake_grow
 .extern snake_move
+.extern free_snake_nodes
+
 .extern coord_to_grid_idx
+
+.extern sound_DSnDMG_control_init
+
+.extern sound_sq1_cnt_set
+.extern sound_sq1_freq_set
+.extern sound_sq1_sweep_set
+
+.extern sound_noise_cnt_set
+.extern sound_noise_freq_set
+
+.extern sound_sq1_play
+.extern sound_noise_play
+
+
 
     .section .bss
     .align 2
@@ -28,6 +59,7 @@ GRID_A:
 GRID_B:
     .space 2400
     .size GRID_B, .-GRID_B
+
 
     .align 2
     .global LFSR 
@@ -302,9 +334,11 @@ poll_keys:
     .type draw_grid %function
 draw_grid:
     // r0 = current grid buffer/front buffer grid
+    // r1 = back buffer
     PUSH {lr}
-    PUSH {r4,r5, r6}
+    PUSH {r4,r5, r6, r7}
     MOV r6, r0
+    MOV r7, r1
     MOV r4, #0  // r4 = grid y coord.
 .Ldg_y:
         MOV r5, #0  // r5 = grid x coord.
@@ -312,8 +346,14 @@ draw_grid:
             MOV r0, r5
             MOV r1, r4
             LDRB r2, [r6]
+            LDRB r3, [r7]
+            CMP r2, r3
+            BEQ .Ldg_skip_overwrite  // if *backbuf == *frontbuf, skip pointless drawing
+            STRB r2, [r7]  // *r7 = (r2=*r6) : overwrite back buf cell with front buf content
             BL draw_grid_cell
+.Ldg_skip_overwrite:
             ADD r6, #1
+            ADD r7, #1
             ADD r5, #1
             CMP r5, #GRID_WIDTH
             BLT .Ldg_x
@@ -321,7 +361,7 @@ draw_grid:
         CMP r4, #GRID_HEIGHT
         BLT .Ldg_y
     
-    POP {r4, r5, r6}
+    POP {r4, r5, r6, r7}
     POP {r3}
     
     BX r3
@@ -581,7 +621,12 @@ pause:
         AND r1, r0
         CMP r1, #0
         BNE .Lpause_waitloop
-
+.Lpause_debounceloop2:
+        BL poll_keys
+        MOV r1, #KEY_START
+        AND r1, r0
+        CMP r1, #0
+        BEQ .Lpause_debounceloop2
 
 
     POP {r0}
@@ -616,14 +661,103 @@ spawn_new_apple:
 
     .size spawn_new_apple, .-spawn_new_apple
 
+    .thumb_func
+    .align 2
+    .global init_sound
+    .type init_sound %function
+init_sound:
+    
+    PUSH {lr}
+    BL sound_DSnDMG_control_init
+    
+    MOV r0, #0
+    MOV r1, #1
+    MOV r2, #0
+    
+    BL sound_sq1_sweep_set
+    MOV r0, #48
+    MOV r1, #2  // Duty 1/2
+    MOV r2, #7  // Envelope Shift Step Time
+    MOV r3, #4  // Init vol. 12
+    PUSH {r3}
+    MOV r3, #0
+    BL sound_sq1_cnt_set
+    ADD sp, #4
+
+    MOV r0, #0
+    MOV r1, #7
+    MOV r2, #1
+    MOV r3, #8
+    BL sound_noise_cnt_set
+
+    POP {r3}
+    
+    BX r3
+
+    .size init_sound, .-init_sound
+
+    .section .iwram,"ax", %progbits
+    .arm
+    .align 2
+    .global fast_memcpy32
+    .type fast_memcpy32 %function
+fast_memcpy32:
+    // r0 dest, r1 src, r2 word ct
+    AND r12, r2, #7  // r12 = word_ct % 8
+    LSRS r2, #3
+    BEQ .Lfmcpy_remainder
+    PUSH {r4-r10}
+.Lfmcpy_blocks:
+        LDMIA r1!, {r3-r10}
+        STMIA r0!, {r3-r10}
+        SUBS r2, #1
+        BNE .Lfmcpy_blocks
+    POP {r4-r10}
+.Lfmcpy_remainder:
+        SUBS r12, #1
+        LDRCS r3, [r1], #4
+        STRCS r3, [r0], #4
+        BCS .Lfmcpy_remainder
+    BX lr
+    .size fast_memcpy32, .-fast_memcpy32
+
+    .arm
+    .align 2
+    .global fast_memset32
+    .type fast_memset32 %function
+fast_memset32:
+    // r0 dest, r1 fill val, r2 word ct
+    AND r12, r2, #7  // r12 = word_ct % 8
+    LSRS r2, #3
+    BEQ .Lfmcpy_remainder
+    PUSH {r4-r9}
+    MOV r3, r1
+    MOV r4, r1 
+    MOV r5, r1
+    MOV r6, r1 
+    MOV r7, r1 
+    MOV r8, r1 
+    MOV r9, r1
+.Lfmset_blocks:
+        STMIA r0!, {r1, r3-r9}
+        SUBS r2, #1
+        BNE .Lfmset_blocks
+    POP {r4-r9}
+.Lfmset_remainder:
+        SUBS r12, #1
+        STRCS r1, [r0], #4
+        BCS .Lfmset_remainder
+    BX lr
+    .size fast_memset32, .-fast_memset32
+    
+
 // FUNCTION: main
-	.section	.text.startup,"ax",%progbits
+	  .section	.text.startup,"ax",%progbits
     .thumb_func
     .align 2
     .global main
     .type main %function
 main:
-
     MOV r0, #0x80
     MOV r1, r0
     LSL r0, #19
@@ -639,6 +773,9 @@ main:
     MOV r1, #10
     MOV r2, #11
     BL lfsr_init
+
+    BL init_sound
+    PUSH {r4-r7} 
     
 .Lmain_wait_for_start:
         BL poll_keys
@@ -674,23 +811,25 @@ main:
         CMP r0, r1  // Check rand idx isn't same as snake tails init spot
         BEQ .Lmain_find_empty_for_apple  // If they are the same, get new random idx
 
-    
-
-
-
     LDR r1, =GRID_A
     MOV r2, #CELL_APPLE
     STRB r2, [r1, r0]
     MOV r0, r1
+    LDR r1, =GRID_B
     BL draw_grid
+    LDR r6, =GRID_B  // r6 = front buffer.
+    LDR r7, =GRID_A  // r7 = back buffer.
 
-    MOV r4, #CURR_DIR_R
-    LDR r6, =GRID_A
+
+    MOV r4, #CURR_DIR_R  // r4 = current direction
     BL vsync
     B .Lmain_first_pass_loop  // skip input polling for first pass so that 
     //                           for each value assignment of r4=current direction,
     //                           handle_movement called **at least once**.
 .Lmain_inf_loop:
+        BL vsync
+        BL vsync
+        BL vsync
         BL vsync
         BL poll_keys
         // r0 = ret from poll_keys = REG_KEY state
@@ -711,8 +850,8 @@ main:
         //                             the first pass loop label is exactly where
         //                             I would want to jump to when r4 == r0.
         //                             If they !=, then update r4 w/ new direction
-        MOV r4, r0  // If direction change, update r4 accordingly
         
+        MOV r4, r0  // If direction change, update r4 accordingly
 .Lmain_first_pass_loop:
         MOV r0, r4  // r0 = mvmnt direction
         MOV r1, r5  // r1 = Snake body LL
@@ -721,16 +860,68 @@ main:
         CMP r0, #HNDL_MVMNT_OK
         BLT .Lmain_gameover
         BEQ .Lmain_drawgrid
-        
+        mov r0, #RATE_D
+        mov r1, #4
+        BL sound_sq1_play
         MOV r0, r6
         BL spawn_new_apple
+        MOV r0, #RATE_FIS
+        MOV r1, #3
+        BL sound_sq1_play
 
 .Lmain_drawgrid:
-        MOV r0, r6  // r0 = grid
+        MOV r0, r6  // r0 = front buf
+        MOV r1, r7  // r1 = back buf
+
         BL draw_grid
+        MOV r0, r6  // temporarily put front buf's addr in r0
+        MOV r6, r7  // then swap out back buf's addr into front buf ptr, r6
+        MOV r7, r0  // Move back old fb, tmp'd in r0, into bb slot.
+
         B .Lmain_inf_loop
 .Lmain_gameover:
-    POP {r3}
-    MOV pc, r3
+    MOV r0, #2
+    MOV r1, #1
+    MOV r2, #5
+    MOV r3, #1
+    BL sound_noise_play
+    
+    LDR r0, =GRID_A
+    MOV r1, #0
+    MOV r2, #128
+    LSL r2, #2
+    ADD r2, #88
+    LDR r3, =fast_memset32
+    BL .Lbranch_thru_r3
 
+    LDR r0, =GRID_B
+    MOV r1, #0
+    MOV r2, #128
+    LSL r2, #2
+    ADD r2, #88
+    LDR r3, =fast_memset32
+    BL .Lbranch_thru_r3
+    
+    MOV r0, #0xC0  // 192
+    LSL r0, #0x13  // 19
+    MOV r1, #0
+    // Word ct:
+    // 240x160 = VRAM pixel buffer dims when in Mode 3
+    // and each pixel is an HWORD Mode 3, so that means
+    // so (240x160)HWORDS * 0.5 WORDS/HWORD = (240X160)>>1 WORDS
+    // 240x160>>1 = 240X80 = 80*15*16 = (80*(16-1)) * 16 = (80*16 - 80)*16 = ((80<<4)-80)<<4
+    MOV r3, #80
+    LSL r2, r3, #4  // r2 = r3<<4 = 80<<4
+    SUB r2, r3  // r2 -= r3 : r2 = 80<<4 - 80
+    LSL r2, #4
+    LDR r3, =fast_memset32
+    BL .Lbranch_thru_r3
+ 
+
+    BL free_snake_nodes
+    POP {r4-r7}
+
+    POP {pc}
+.Lbranch_thru_r3:
+    BX r3
     .size main, .-main

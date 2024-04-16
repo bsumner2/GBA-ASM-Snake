@@ -272,14 +272,37 @@ snake_init:
     BX r1
     .size snake_init, .-snake_init
 
-    
+    .thumb_func
+    .align 2
+    .global free_snake_nodes
+    .type free_snake_nodes %function
+free_snake_nodes:
+    PUSH {r4, r5, r6, lr}
+    LDR r4, =S_Snake_Body  // r4 = LL
+    LDR r5, [r4]  // r5 = LL->head
+    LDRH r6, [r4, #8]  // r6 = LL->len
+    B .Lfreenodes_contcheck
 
+.Lfreenodes_loop:
+        MOV r0, r5  // Move curr node, r5, into r0 for freeing
+        LDR r5, [r0, #4]  // r5 = node->next
 
+        BL free
+
+        SUB r6, #1
+.Lfreenodes_contcheck:
+        CMP r6, #0
+        BNE .Lfreenodes_loop
+
+    MOV r0, #0
+    STR r0, [r4]  // LL->head = NULL
+    STR r0, [r4, #4]  // LL->tail = NULL
+    STRH r0, [r4, #8]  // LL->len = 0
+
+    POP {r4-r6}
+    POP {r3}
+    BX r3
      
     
-
-    
-    
-
-    
+    .size free_snake_nodes, .-free_snake_nodes
      

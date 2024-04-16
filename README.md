@@ -38,7 +38,7 @@ Work in progress.
 - [x] Optimize input handler. Maybe just read directly from REG_KEY and only use poll_keys for RNG
    state manipulation.[^3]
 - [ ] Beautification:
-    - [ ] Adding sound
+    - [x] Adding sound
     - [ ] Adding text engine
     - [ ] Full menu system
     - [ ] Non-barebones pause screen
@@ -54,7 +54,9 @@ Work in progress.
     tracking the body would incur too much time overhead: definitely far 
     more than what the RAM, that we would save from foregoing the LL approach,
     would be worth.
-[^3]: Upon further inspection on actual hardware, I think the controls run tight enough.
-    I do wish it was easier to make very quick U-turns with no medial row/column in between.
-    Maybe in the future I can try to improve it, but for now, my focus will be on beautification.
 
+[^3]: So initially, I thought my asm was just that bad, but I realized I forgot to implement the 2xbuffered
+    grid system. So every main loop cycle, it would redraw the entire screen, which just resulted in a lot of
+    redundency and time wasted. I implemented the double buffer and was able to get it to run super fast.
+    So fast, in fact, that I actually just ended up having to make it invoke vsync several times in a row to make it
+    human-playable (i.e.: let the game run slow enough to where player can react and move character as needed.
