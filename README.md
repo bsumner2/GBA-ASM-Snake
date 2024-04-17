@@ -2,7 +2,29 @@
 
 ## Written in GAS dialect ARM Assembly
 
-Work in progress.
+Functional, but still a work in progress.
+
+### Compilation and Running
+
+#### Uses DevkitPro's DevkitARM toolchain
+
+Specifically, the gba-dev package using DevkitPro's package manager, and specifically using the assembler provided
+<b>by arm-none-eabi-gcc</b>.
+
+The makefile itself might need to be used with GNU Make due to the way I wrote it, though.
+I *hope* it works on Windows, though! I can only attest for it working on Linux.
+
+#### Running the game
+
+- On start up, the screen will be black. Just press the <b>Start</b> button to initialize the game! 
+
+- I forgot to add a debouncing loop after the initial <b>Start</b> button press check, so it might initialize the grid, but then immediately pause itself:
+    just press the <b>Start</b> button again and it should unpause you and let you play! From there, controls should just be intuitive;
+    <b>DPad</b> moves the snake. 
+- If you get a <b>Game Over</b>, a white noise sound effect will play, and the screen will go black again. If you just press 
+  the <b>Start</b> button again, it will start a new game, just as it would if you just booted the game up!
+
+
 
 ### Implemented[^sidenote]
 
@@ -60,3 +82,5 @@ Work in progress.
     redundency and time wasted. I implemented the double buffer and was able to get it to run super fast.
     So fast, in fact, that I actually just ended up having to make it invoke vsync several times in a row to make it
     human-playable (i.e.: let the game run slow enough to where player can react and move character as needed.
+
+
