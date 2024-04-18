@@ -161,7 +161,15 @@ draw_grid_cell:
     .align 2
     .global vsync
     .type vsync %function
+// So I just read that using the BIOS-provided vsync
+// syscall saves a significant amount of battery life, since
+// it actually HALTS the CPU instead of just busy-waiting
+// with a while loop. So I'm gonna try that here:
 vsync:
+  SWI 0x05
+  BX lr
+
+/*
     // r0 = 0x04000006 = REG_DISPLAY_VCOUNT
     MOV r0, #0x80
     LSL r0, #19
@@ -175,6 +183,7 @@ vsync:
         CMP r1, #160
         BLT .Lvsync_get_outta_vdraw
     BX lr
+    */
     .size vsync, .-vsync
 
 // FUNCTION: lfsr_init
@@ -750,9 +759,27 @@ fast_memset32:
     BX lr
     .size fast_memset32, .-fast_memset32
     
+    .arm
+    .align 2
+    .global isr_callback
+    .type isr_callback %function
+isr_callback:
+    MOV r0, #0x80
+    MOV r0, r0, LSL #19  // r0 = 0x04000000
+    LDR r1, [r0, #0x200]!  // Get REG_IE and REG_IF in one go since they're contiguous in mem
+    AND r1, r1, LSR #16  // This ANDs REG_IE and REG_IF, since first 16b are REG_IE and the 2nd 16b are REG_IF
+    STRH r1, [r0, #0x2]  // Write to REG_IF to ack IRQ
+    LDR r2, [r0, #-0x208]  // get REG_IFBIOS
+    ORR r2, r1  // OR REG_IE&REG_IF with REG_IFBIOS
+    STR r2, [r0, #-0x208]  // Ack for REG_IFBIOS, too
+
+    BX lr
+    .size isr_callback, .-isr_callback
+  
+    
 
 // FUNCTION: main
-	  .section	.text.startup,"ax",%progbits
+	.section	.text.startup,"ax",%progbits
     .thumb_func
     .align 2
     .global main
@@ -760,12 +787,30 @@ fast_memset32:
 main:
     MOV r0, #0x80
     MOV r1, r0
-    LSL r0, #19
+    LSL r0, #19  // #0x80<<19 = 0x04000000
     
     MOV r2, #3
     LSL r1, r2
     ORR r1, r2
+    STR r1, [r0]  // Set video modes: Mode3 w/ BG2
+
+    MOV r1, #8
+    STRH r1, [r0, #4]  // Enable vblank IRQ trigger in display stat register
+    
+    LDR r1, =isr_callback
+    SUB r0, #4
     STR r1, [r0]
+    
+    // So, now, r0 is 0x04000000 - 4
+    // Still need to set REG_IE and REG_IME, which are 0x04000000 + (0x200 and 0x208) respectively
+    MOV r2, #0x81  // r2 = 129
+    LSL r2, #2  // r2 = 129*4 = (128+1)*4 = 512+4 = 0x200+0x004 = 0x204
+    ADD r0, r2  // r0 = 0x04000000 - 0x004 + 0x204 = 0x04000000 + 0x200
+    MOV r1, #1  // r1 = VBlank IRQ enable flag = 1<<0
+    STRH r1, [r0]  // Enable receiving VBL IRQs in REG_IE
+
+    STRH r1, [r0, #8]  // Flip IRQ Master enable switch
+
     PUSH {lr}
 
     LDR r0, =RNG_Seed

@@ -22,7 +22,7 @@ I *hope* it works on Windows, though! I can only attest for it working on Linux.
     just press the <b>Start</b> button again and it should unpause you and let you play! From there, controls should just be intuitive;
     <b>DPad</b> moves the snake. 
 - If you get a <b>Game Over</b>, a white noise sound effect will play, and the screen will go black again. If you just press 
-  the <b>Start</b> button again, it will start a new game, just as it would if you just booted the game up!
+  the <b>Start</b> button again, it will start a new game, just as it would when booting up!
 
 
 
