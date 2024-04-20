@@ -11,6 +11,7 @@ LD=$(AS)
 ASFLAGS=-xassembler-with-cpp
 LDFLAGS=-mthumb-interwork -mthumb -specs=gba.specs
 OBJ_CPY=arm-none-eabi-objcopy
+OBJ_DUMP=arm-none-eabi-objdump
 
 .PHONY: build clean
 
@@ -24,6 +25,13 @@ test: build_dirs clean build
 build: build_dirs $(TARGET).gba
 
 build_dirs: $(ASM) $(BIN)
+
+dump_objs: 
+
+dump_elf: $(TARGET).elf
+	$(OBJ_DUMP
+
+	
 
 $(ASM) $(BIN):
 	mkdir -p $@

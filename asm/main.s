@@ -45,7 +45,8 @@
 .extern sound_sq1_play
 .extern sound_noise_play
 
-
+.extern Mode3_puts
+.extern Mode3_putchar
 
     .section .bss
     .align 2
@@ -67,14 +68,28 @@ LFSR:
     .space 2  // For the LFSR RNG State: u16_t state
     .space 4  // For the Feedback Polynomial: u16_t feedback_polynomial[2]
     .size LFSR, .-LFSR
-    
+    .align 2 
+    .global INITED_LFSR
+INITED_LFSR:
+    .word 0
+    .size INITED_LFSR, .-INITED_LFSR
+
     .section .rodata
     .align 2
     .global RNG_Seed
 RNG_Seed:
     .hword 0xab38
     .size RNG_Seed, .-RNG_Seed
-
+    .align 2
+    .global START_PROMPT
+START_PROMPT:
+    .asciz "Press START to play!"
+    
+/*    .align 2
+    .global PAUSE_PROMPT
+PAUSE_PROMPT:
+    .asciz "Paused!\nPress A to cycle color scheme!\nPress UP/DOWN to change speed!"
+*/
 
 
 
@@ -785,6 +800,7 @@ isr_callback:
     .global main
     .type main %function
 main:
+    
     MOV r0, #0x80
     MOV r1, r0
     LSL r0, #19  // #0x80<<19 = 0x04000000
@@ -811,16 +827,43 @@ main:
 
     STRH r1, [r0, #8]  // Flip IRQ Master enable switch
 
-    PUSH {lr}
+    LDR r0, =INITED_LFSR
+    LDR r0, [r0]
+    CMP r0, #0
+    BEQ .Lmain_prompt_red
+
+
+    LDR r0, =START_PROMPT
+    MOV r1, #70
+    MOV r2, #0x7F
+    LSL r2, #8
+    MOV r3, #0xFF
+    ORR r3, r2
+    MOV r2, #76 
+    BL Mode3_puts
+    B .Lmain_skip_redprompt
+
+.Lmain_prompt_red:
+    LDR r0, =START_PROMPT
+    MOV r1, #70
+    MOV r2, #76 
+    MOV r3, #31
+    BL Mode3_puts
+
+.Lmain_skip_redprompt:
+    LDR r0, =INITED_LFSR
+    LDR r0, [r0]
+    CMP r0, #0
+    BNE .Lmain_skip_lfsr_init
 
     LDR r0, =RNG_Seed
     LDRH r0, [r0]
     MOV r1, #10
     MOV r2, #11
     BL lfsr_init
-
+.Lmain_skip_lfsr_init:
     BL init_sound
-    PUSH {r4-r7} 
+    PUSH {r4-r7}
     
 .Lmain_wait_for_start:
         BL poll_keys
@@ -828,6 +871,12 @@ main:
         AND r0, r1
         CMP r0, #0
         BNE .Lmain_wait_for_start
+
+    LDR r0, =START_PROMPT
+    MOV r1, #70
+    MOV r2, #76 
+    MOV r3, #0
+    BL Mode3_puts
 
     /*BL lfsr_rand
     MOV r1, #150
@@ -964,9 +1013,11 @@ main:
  
 
     BL free_snake_nodes
+    LDR r0, =INITED_LFSR
+    MOV r1, #1
+    STR r1, [r0]
     POP {r4-r7}
-
-    POP {pc}
+    B main
 .Lbranch_thru_r3:
     BX r3
     .size main, .-main

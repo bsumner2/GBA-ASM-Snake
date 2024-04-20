@@ -61,7 +61,7 @@ I *hope* it works on Windows, though! I can only attest for it working on Linux.
    state manipulation.[^3]
 - [ ] Beautification:
     - [x] Adding sound
-    - [ ] Adding text engine
+    - [X] Adding text engine
     - [ ] Full menu system
     - [ ] Non-barebones pause screen
 
