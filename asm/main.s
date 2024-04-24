@@ -84,12 +84,13 @@ RNG_Seed:
     .global START_PROMPT
 START_PROMPT:
     .asciz "Press START to play!"
+    .size START_PROMPT, .-START_PROMPT
     
-/*    .align 2
+    .align 2
     .global PAUSE_PROMPT
 PAUSE_PROMPT:
-    .asciz "Paused!\nPress A to cycle color scheme!\nPress UP/DOWN to change speed!"
-*/
+    .asciz "Paused!\nPress A to cycle color scheme!\nPress UP/DOWN to change speed!\nCurrent game speed: "
+    .size PAUSE_PROMPT, .-PAUSE_PROMPT
 
 
 
@@ -359,8 +360,7 @@ poll_keys:
 draw_grid:
     // r0 = current grid buffer/front buffer grid
     // r1 = back buffer
-    PUSH {lr}
-    PUSH {r4,r5, r6, r7}
+    PUSH {r4-r7, lr}
     MOV r6, r0
     MOV r7, r1
     MOV r4, #0  // r4 = grid y coord.
@@ -385,11 +385,53 @@ draw_grid:
         CMP r4, #GRID_HEIGHT
         BLT .Ldg_y
     
-    POP {r4, r5, r6, r7}
+    POP {r4-r7}
     POP {r3}
     
     BX r3
     .size draw_grid, .-draw_grid
+
+
+// FUNCTION: unpause_redraw_grid
+    .thumb_func
+    .align 2
+    .global unpause_redraw_grid
+    .type unpause_redraw_grid %function
+unpause_redraw_grid:
+    // r0 = current grid buffer to draw
+    PUSH {r4-r6, lr}
+    MOV r6, r0
+    MOV r4, #0  // r4 = grid y coord.
+.Luprg_y:
+        MOV r5, #0  // r5 = grid x coord.
+.Luprg_x:
+            MOV r0, r5
+            MOV r1, r4
+            LDRB r2, [r6]
+            CMP r2, #0
+            BEQ .Luprg_skip_empty_draw
+            BL draw_grid_cell
+.Luprg_skip_empty_draw:
+            ADD r6, #1
+            ADD r5, #1
+            CMP r5, #GRID_WIDTH
+            BLT .Luprg_x
+        ADD r4, #1
+        CMP r4, #GRID_HEIGHT
+        BLT .Luprg_y
+    
+    POP {r4-r6}
+    POP {r3}
+    
+    BX r3
+    .size unpause_redraw_grid, .-unpause_redraw_grid
+
+
+
+
+
+
+
 
 // FUNCTION: rand_grid_idx
     .thumb_func
@@ -626,37 +668,154 @@ handle_input:
     
     .size handle_input, .-handle_input
 
+#define GAME_SPEED_FIELD_MIN 1
+#define GAME_SPEED_FIELD_MAX 4
 
     .thumb_func
     .align 2
     .global pause
     .type pause %function
 pause:
-    PUSH {lr}
+    PUSH {r4-r6, lr}
+    MOV r4, r0
 .Lpause_debounceloop:
         BL poll_keys
         MOV r1, #KEY_START
         AND r1, r0
         CMP r1, #0
         BEQ .Lpause_debounceloop
+    LDR r0, =PAUSE_PROMPT
+    MOV r1, #8
+    MOV r2, #0x7F
+    MOV r3, #0xFF
+    LSL r2, #8
+    ORR r3, r2
+    MOV r2, #32
+    BL Mode3_puts
+
+    MOV r5, r0  // r5 = speed text x start pos
+    MOV r6, r1  // r6 = speed text y start pos
+    MOV r2, r1
+    MOV r1, r0
+    MOV r0, #5
+    SUB r0, r4
+    ADD r0, #'0'
+    MOV r3, #0x7F
+    LSL r3, #8
+    ADD r3, #0xFF
+    BL Mode3_putchar
+
+    
+    
+    
+        
 .Lpause_waitloop:
         BL poll_keys
         MOV r1, #KEY_START
         AND r1, r0
         CMP r1, #0
-        BNE .Lpause_waitloop
+        BEQ .Lpause_debounceloop2
+        MOV r1, #KEY_UP  // r1 = KEY_UP
+        MOV r2, #KEY_DOWN
+        ORR r2, r1  // r2 = UP|DOWN
+        MOV r3, r2  // r3 = UP|DOWN
+        AND r2, r0  // r2 = (UP|DOWN)&REG_KEY
+        CMP r2, r3  // Mask&REG_KEY unchanged means no masked key pressed, otherwise it's zero.
+        BEQ .Lpause_waitloop  // so if Mask&REG_KEY  == Mask, then neither UP or DOWN is pressed
+        CMP r2, #KEY_UP  // If mask&reg == UP, then UP mask field unchanged, and DOWN was cleared,
+                         // so DOWN must be pressed
+        BEQ .Lpause_waitloop_DOWN
+.Lpause_waitloop_UP:
+            BL poll_keys  // Debounce key press
+            MOV r1, #KEY_UP
+            AND r1, r0
+            CMP r1, #0
+            BEQ .Lpause_waitloop_UP
+        CMP r4, #GAME_SPEED_FIELD_MIN+1
+        BGE .Lpause_waitloop_can_speedup
+        B .Lpause_waitloop
+.Lpause_waitloop_can_speedup:
+        MOV r0, #5
+        SUB r0, r4
+        ADD r0, #'0'
+        MOV r1, r5
+        MOV r2, r6
+        MOV r3, #0
+        BL Mode3_putchar  // erase last speed
+
+        SUB r4, #1  // inc speed
+
+        MOV r0, #5
+        SUB r0, r4
+        ADD r0, #'0'
+        MOV r1, r5
+        MOV r2, r6
+        MOV r3, #0x7F
+        LSL r3, #8
+        ADD r3, #0xFF
+        BL Mode3_putchar  // write new speed
+        B .Lpause_waitloop
+        
+.Lpause_waitloop_DOWN:
+            BL poll_keys  // Debounce key press
+            MOV r1, #KEY_DOWN
+            AND r1, r0
+            CMP r1, #0
+            BEQ .Lpause_waitloop_DOWN
+        CMP r4, #GAME_SPEED_FIELD_MAX
+        BGE .Lpause_waitloop
+        MOV r0, #5
+        SUB r0, r4
+        ADD r0, #'0'
+        MOV r1, r5
+        MOV r2, r6
+        MOV r3, #0
+        BL Mode3_putchar  // erase last speed
+
+        ADD r4, #1  // dec speed
+        
+        MOV r0, #5
+        SUB r0, r4
+        ADD r0, #'0'
+        MOV r1, r5
+        MOV r2, r6
+        MOV r3, #0x7F
+        LSL r3, #8
+        ADD r3, #0xFF
+        BL Mode3_putchar  // write new speed
+        B .Lpause_waitloop
+        
 .Lpause_debounceloop2:
         BL poll_keys
         MOV r1, #KEY_START
         AND r1, r0
         CMP r1, #0
         BEQ .Lpause_debounceloop2
+    
+    MOV r0, #5
+    SUB r0, r4
+    ADD r0, #'0'
+    MOV r1, r5
+    MOV r2, r6
+    MOV r3, #0
+    BL Mode3_putchar  // erase last speed
+
+    LDR r0, =PAUSE_PROMPT
+    MOV r1, #8
+    MOV r2, #32
+    MOV r3, #0
+    BL Mode3_puts  // erase prompt
 
 
-    POP {r0}
-    BX r0
+    MOV r0, r4
+    POP {r4-r6}
+    POP {r3}
+    BX r3
+
+
+
     .size pause, .-pause
-
+    
 
 
     .thumb_func
@@ -759,7 +918,7 @@ fast_memset32:
     MOV r4, r1 
     MOV r5, r1
     MOV r6, r1 
-    MOV r7, r1 
+    MOV r7, r1
     MOV r8, r1 
     MOV r9, r1
 .Lfmset_blocks:
@@ -914,17 +1073,23 @@ main:
     LDR r6, =GRID_B  // r6 = front buffer.
     LDR r7, =GRID_A  // r7 = back buffer.
 
-
+    MOV r0, #4
+    PUSH {r0}  // stack top = game speed
     MOV r4, #CURR_DIR_R  // r4 = current direction
     BL vsync
     B .Lmain_first_pass_loop  // skip input polling for first pass so that 
     //                           for each value assignment of r4=current direction,
     //                           handle_movement called **at least once**.
 .Lmain_inf_loop:
-        BL vsync
-        BL vsync
-        BL vsync
-        BL vsync
+        PUSH {r4,r5}
+        LDR r4, [sp, #8]
+        MOV r5, #0
+.Lmain_vsyncs_loop:
+            BL vsync
+            ADD r5, #1
+            CMP r5, r4
+            BLT .Lmain_vsyncs_loop
+        POP {r4,r5}
         BL poll_keys
         // r0 = ret from poll_keys = REG_KEY state
         MOV r1, r4  // r1 = mvmnt direction
@@ -933,7 +1098,23 @@ main:
         SUB r1, #1
         CMP r0, r1
         BNE .Lmain_no_pause
+        // For pause menu,
+        // clear screen with fast_memset32(VRAM, 0, <<VRAM screen buffer word count>>)
+        MOV r0, #0xC0
+        LSL r0, #19  // r0 = VRAM start addr
+        MOV r1, #0
+        MOV r3, #80  // logic behind this part explained in block above free_snake_nodes call @ game over code
+        LSL r2, r3, #4
+        SUB r2, r3
+        LSL r2, #4
+        LDR r3, =fast_memset32
+        BL .Llong_call_via_r3
+
+        LDR r0, [sp]
         BL pause
+        STR r0, [sp]
+        MOV r0, r6
+        BL unpause_redraw_grid
         B .Lmain_first_pass_loop  // Skip the next part, since no direction 
         //                           flag values are -1, so running what's below
         //                           would cause a soft-locking error as r4 will
@@ -974,6 +1155,7 @@ main:
 
         B .Lmain_inf_loop
 .Lmain_gameover:
+    ADD sp, #4  // deallocate game speed var off stack top
     MOV r0, #2
     MOV r1, #1
     MOV r2, #5
@@ -986,7 +1168,7 @@ main:
     LSL r2, #2
     ADD r2, #88
     LDR r3, =fast_memset32
-    BL .Lbranch_thru_r3
+    BL .Llong_call_via_r3
 
     LDR r0, =GRID_B
     MOV r1, #0
@@ -994,7 +1176,7 @@ main:
     LSL r2, #2
     ADD r2, #88
     LDR r3, =fast_memset32
-    BL .Lbranch_thru_r3
+    BL .Llong_call_via_r3
     
     MOV r0, #0xC0  // 192
     LSL r0, #0x13  // 19
@@ -1009,8 +1191,7 @@ main:
     SUB r2, r3  // r2 -= r3 : r2 = 80<<4 - 80
     LSL r2, #4
     LDR r3, =fast_memset32
-    BL .Lbranch_thru_r3
- 
+    BL .Llong_call_via_r3
 
     BL free_snake_nodes
     LDR r0, =INITED_LFSR
@@ -1018,6 +1199,6 @@ main:
     STR r1, [r0]
     POP {r4-r7}
     B main
-.Lbranch_thru_r3:
+.Llong_call_via_r3:
     BX r3
     .size main, .-main

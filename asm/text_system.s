@@ -107,7 +107,7 @@ Mode3_putchar:
     .type Mode3_puts %function
 Mode3_puts:
     // r0: string addr r1: x r2: y r3: color
-    PUSH {r4-r6, lr}
+    PUSH {r4-r7, lr}
     MOV r4, r0  // str addr
     MOV r5, r1  // x
     MOV r6, r2  // y
@@ -119,13 +119,13 @@ Mode3_puts:
     CMP r1, #240
     BGE .Lm3puts_cursor_ovf
     MOV r1, r5
-    PUSH {r5}  // push r5=x:= START_X onto stack
+    MOV r7, r5
     LDRB r0, [r4]
     CMP r0, #0
     BEQ .Lm3puts_nullterminator_reached
     B .Lm3puts_strloop
 .Lm3puts_newline:
-        LDR r5, [sp]
+        MOV r5, r7
         ADD r6, #VERDANA_GLYPH_HEIGHT
         CMP r6, #160
         BGE .Lm3puts_cursor_ovf
@@ -141,21 +141,21 @@ Mode3_puts:
         MOV r1, r5
         MOV r2, r6
         LDRB r0, [r4]
-        CMP r0, #0
-        BNE .Lm3puts_strloop
-        CMP r0, #'\n'
+        CMP r0, #10
         BEQ .Lm3puts_newline
+        CMP r0, #0
+        BNE .Lm3puts_strloop 
 .Lm3puts_nullterminator_reached:
-    ADD sp, #4  // dont bother wasting time from memory fetching by popping START_X off stack.
-                // we just need to dealloc it; don't care about its contents.
-    MOV r0, #0
-    POP {r4-r6}
+    MOV r0, r5
+    MOV r1, r6
+    POP {r4-r7}
     POP {r3}
     BX r3
 .Lm3puts_cursor_ovf:
     MOV r0, #0
     SUB r0, #1
-    POP {r4-r6}
+    MOV r1, r0
+    POP {r4-r7}
     POP {r3}
     BX r3
     
