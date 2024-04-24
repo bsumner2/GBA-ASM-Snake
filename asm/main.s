@@ -1297,7 +1297,7 @@ main:
 
         B .Lmain_inf_loop
 .Lmain_gameover:
-    ADD sp, #4  // deallocate game speed var off stack top
+    ADD sp, #8  // deallocate both game speed var and color scheme var off stack
     MOV r0, #2
     MOV r1, #1
     MOV r2, #5
