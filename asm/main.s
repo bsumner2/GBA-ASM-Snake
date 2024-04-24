@@ -129,8 +129,8 @@ draw_grid_cell:
     MOV r2, #0
     B .Ldgc_draw
 .Ldgc_empty_notpal0:
-    MOV r2, #0x73
-    MOV r3, #0x1E
+    MOV r2, #0xA3
+    MOV r3, #0x04
     LSL r3, #8
     ORR r2, r3
     B .Ldgc_draw
@@ -140,8 +140,8 @@ draw_grid_cell:
     MOV r2, #0x1F
     B .Ldgc_draw
 .Ldgc_apple_notpal0:
-    MOV r2, #0xA3
-    MOV r3, #0x04
+    MOV r2, #0x73
+    MOV r3, #0x1E
     LSL r3, #8
     ORR r2, r3
 .Ldgc_draw:
@@ -357,7 +357,7 @@ poll_keys:
     LSL r0, #15
     ADD r0, #19
     LSL r0, #4
-    LDRH r0, [r0]  // r0 = (*((u16*) 0x04000130))
+    LDRH r0, [r0]  // r0 = (*((u16*) 0x1E000130))
     PUSH {r0}  // save key poll onto stack
     // MVN r0, r0  // r0 = ~r0
     BL rng_state_manip
@@ -730,8 +730,8 @@ pause:
     MOV r1, #0
     B .Lpause_clear
 .Lpause_clear_not0:
-    MOV r1, #0x73
-    MOV r3, #0x1E
+    MOV r1, #0xA3
+    MOV r3, #0x04
     LSL r3, #8
     ORR r1, r3
     LSL r3, r1, #16
@@ -754,8 +754,8 @@ pause:
     ORR r3, r2
     B .Lpause_draw_prompt
 .Lpause_draw_prompt_not0:
-    MOV r2, #0x04
-    MOV r3, #0xA3
+    MOV r2, #0x1E
+    MOV r3, #0x73
     LSL r2, #8
     ORR r3, r2
 .Lpause_draw_prompt:
@@ -776,9 +776,9 @@ pause:
     ADD r3, #0xFF
     B .Lpause_draw_speed
 .Lpause_draw_speed_not0:
-    MOV r3, #0x04
+    MOV r3, #0x1E
     LSL r3, #8
-    ADD r3, #0xA3
+    ADD r3, #0x73
 .Lpause_draw_speed:
     BL Mode3_putchar
 
@@ -842,9 +842,9 @@ pause:
         MOV r3, #0
         B .Lpause_waitloop_redrawspeed_erase
 .Lpause_waitloop_redrawspeed_erase_not0:
-        MOV r3, #0x1E
+        MOV r3, #0x04
         LSL r3, #8
-        ADD r3, #0x73
+        ADD r3, #0xA3
 .Lpause_waitloop_redrawspeed_erase:
         BL Mode3_putchar  // erase last speed
 
@@ -862,9 +862,9 @@ pause:
         ADD r3, #0xFF
         B .Lpause_wait_redrawspeed
 .Lpause_wait_redrawspeed_not0:
-        MOV r3, #0x04
+        MOV r3, #0x1E
         LSL r3, #8
-        ADD r3, #0xA3
+        ADD r3, #0x73
 .Lpause_wait_redrawspeed:
         BL Mode3_putchar  // write new speed
         B .Lpause_waitloop
@@ -887,9 +887,9 @@ pause:
         MOV r3, #0
         B .Lpause_wait_redrawspeed_erase2
 .Lpause_wait_redrawspeed_erase2_not0:
-        MOV r3, #0x1E
+        MOV r3, #0x04
         LSL r3, #8
-        ADD r3, #0x73
+        ADD r3, #0xA3
 .Lpause_wait_redrawspeed_erase2:
         BL Mode3_putchar  // erase last speed
 
@@ -907,9 +907,9 @@ pause:
         ADD r3, #0xFF
         B .Lpause_wait_redrawspeed2
 .Lpause_wait_redrawspeed2_not0:
-        MOV r3, #4
+        MOV r3, #0x1E
         LSL r3, #8
-        ADD r3, #0xA3
+        ADD r3, #0x73
 .Lpause_wait_redrawspeed2:
         BL Mode3_putchar  // write new speed
         B .Lpause_waitloop
@@ -931,9 +931,9 @@ pause:
     MOV r3, #0
     B .Lpause_erase_speed
 .Lpause_erase_speed_not0:
-    MOV r3, #0x1E
+    MOV r3, #0x04
     LSL r3, #8
-    ADD r3, #0x73
+    ADD r3, #0xA3
 .Lpause_erase_speed:
     BL Mode3_putchar  // erase last speed
 
@@ -944,8 +944,8 @@ pause:
     MOV r3, #0
     B .Lpause_eraseprompt
 .Lpause_eraseprompt_not0:
-    MOV r3, #0x73
-    MOV r2, #0x1E
+    MOV r3, #0xA3
+    MOV r2, #0x04
     LSL r2, #8
     ORR r3, r2
 .Lpause_eraseprompt:
