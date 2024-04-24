@@ -89,7 +89,7 @@ START_PROMPT:
     .align 2
     .global PAUSE_PROMPT
 PAUSE_PROMPT:
-    .asciz "Paused!\nPress A to cycle color scheme!\nPress UP/DOWN to change speed!\nCurrent game speed: "
+    .asciz "Paused!\nPress A to cycle color scheme!\nPress:\nSEL to cycle color schemes\nUP/DOWN to change speed!\nCurrent game speed: "
     .size PAUSE_PROMPT, .-PAUSE_PROMPT
 
 
@@ -105,19 +105,45 @@ draw_grid_cell:
     // r0: x
     // r1: y
     // r2: cell_type
+    // r3: color scheme
     CMP r2, #CELL_SNAKE
     BNE .Ldgc_NotSnake
+    CMP r3, #0
+    BNE .ldgc_snake_notpal0
     MOV r2, #0xFF
     MOV r3, #0x7F
     LSL r3, #8
     ORR r2, r3
     B .Ldgc_draw
+.ldgc_snake_notpal0:
+    // TODO: Colorscheme
+    MOV r2, #1
+    MOV r3, #5
+    LSL r3, #8
+    ORR r2, r3 
+    B .Ldgc_draw
 .Ldgc_NotSnake:
     BGE .Ldgc_Apple
+    CMP r3, #0
+    BNE .Ldgc_empty_notpal0
     MOV r2, #0
     B .Ldgc_draw
+.Ldgc_empty_notpal0:
+    MOV r2, #0x73
+    MOV r3, #0x1E
+    LSL r3, #8
+    ORR r2, r3
+    B .Ldgc_draw
 .Ldgc_Apple:
+    CMP r3, #0
+    BNE .Ldgc_apple_notpal0
     MOV r2, #0x1F
+    B .Ldgc_draw
+.Ldgc_apple_notpal0:
+    MOV r2, #0xA3
+    MOV r3, #0x04
+    LSL r3, #8
+    ORR r2, r3
 .Ldgc_draw:
     // r1 = grid_y * 4 = screen y
     LSL r1, #2
@@ -360,7 +386,9 @@ poll_keys:
 draw_grid:
     // r0 = current grid buffer/front buffer grid
     // r1 = back buffer
+    // r2 = color scheme
     PUSH {r4-r7, lr}
+    PUSH {r2}
     MOV r6, r0
     MOV r7, r1
     MOV r4, #0  // r4 = grid y coord.
@@ -374,6 +402,7 @@ draw_grid:
             CMP r2, r3
             BEQ .Ldg_skip_overwrite  // if *backbuf == *frontbuf, skip pointless drawing
             STRB r2, [r7]  // *r7 = (r2=*r6) : overwrite back buf cell with front buf content
+            LDR r3, [sp]
             BL draw_grid_cell
 .Ldg_skip_overwrite:
             ADD r6, #1
@@ -384,7 +413,7 @@ draw_grid:
         ADD r4, #1
         CMP r4, #GRID_HEIGHT
         BLT .Ldg_y
-    
+    ADD sp, #4
     POP {r4-r7}
     POP {r3}
     
@@ -399,14 +428,17 @@ draw_grid:
     .type unpause_redraw_grid %function
 unpause_redraw_grid:
     // r0 = current grid buffer to draw
-    PUSH {r4-r6, lr}
+    // r1 = color scheme
+    PUSH {r4-r7, lr}
     MOV r6, r0
+    MOV r7, r1
     MOV r4, #0  // r4 = grid y coord.
 .Luprg_y:
         MOV r5, #0  // r5 = grid x coord.
 .Luprg_x:
             MOV r0, r5
             MOV r1, r4
+            MOV r3, r7
             LDRB r2, [r6]
             CMP r2, #0
             BEQ .Luprg_skip_empty_draw
@@ -420,7 +452,7 @@ unpause_redraw_grid:
         CMP r4, #GRID_HEIGHT
         BLT .Luprg_y
     
-    POP {r4-r6}
+    POP {r4-r7}
     POP {r3}
     
     BX r3
@@ -596,6 +628,7 @@ handle_movement:
 #define KEY_UP 64
 #define KEY_RIGHT 16
 #define KEY_START 8
+#define KEY_SEL 4
 
     .thumb_func
     .align 2
@@ -675,21 +708,57 @@ handle_input:
     .align 2
     .global pause
     .type pause %function
+    // r0 = speed
+    // r1 = color scheme
 pause:
-    PUSH {r4-r6, lr}
+    PUSH {r4-r7, lr}
     MOV r4, r0
+    MOV r7, r1
 .Lpause_debounceloop:
         BL poll_keys
         MOV r1, #KEY_START
         AND r1, r0
         CMP r1, #0
         BEQ .Lpause_debounceloop
+.Lpause_waitloop_redraw:
+    // For pause menu,
+    // clear screen with fast_memset32(VRAM, 0, <<VRAM screen buffer word count>>)
+    MOV r0, #0xC0
+    LSL r0, #19  // r0 = VRAM start addr
+    CMP r7, #0
+    BNE .Lpause_clear_not0
+    MOV r1, #0
+    B .Lpause_clear
+.Lpause_clear_not0:
+    MOV r1, #0x73
+    MOV r3, #0x1E
+    LSL r3, #8
+    ORR r1, r3
+    LSL r3, r1, #16
+    ORR r1, r3
+.Lpause_clear:
+    MOV r3, #80  // logic behind this part explained in block above free_snake_nodes call @ game over code
+    LSL r2, r3, #4
+    SUB r2, r3
+    LSL r2, #4
+    LDR r3, =fast_memset32
+    BL .Llong_call_via_r3
+
     LDR r0, =PAUSE_PROMPT
     MOV r1, #8
+    CMP r7, #0
+    BNE .Lpause_draw_prompt_not0
     MOV r2, #0x7F
     MOV r3, #0xFF
     LSL r2, #8
     ORR r3, r2
+    B .Lpause_draw_prompt
+.Lpause_draw_prompt_not0:
+    MOV r2, #0x04
+    MOV r3, #0xA3
+    LSL r2, #8
+    ORR r3, r2
+.Lpause_draw_prompt:
     MOV r2, #32
     BL Mode3_puts
 
@@ -700,9 +769,17 @@ pause:
     MOV r0, #5
     SUB r0, r4
     ADD r0, #'0'
+    CMP r7, #0
+    BNE .Lpause_draw_speed_not0
     MOV r3, #0x7F
     LSL r3, #8
     ADD r3, #0xFF
+    B .Lpause_draw_speed
+.Lpause_draw_speed_not0:
+    MOV r3, #0x04
+    LSL r3, #8
+    ADD r3, #0xA3
+.Lpause_draw_speed:
     BL Mode3_putchar
 
     
@@ -715,7 +792,27 @@ pause:
         AND r1, r0
         CMP r1, #0
         BEQ .Lpause_debounceloop2
-        MOV r1, #KEY_UP  // r1 = KEY_UP
+
+        MOV r1, #KEY_SEL
+        AND r1, r0
+        CMP r1, #0
+        BNE .Lpause_no_colorscheme_cycle
+.Lpause_wait_debounce_sel:
+            BL poll_keys
+            MOV r1, #KEY_SEL
+            AND r1, r0
+            CMP r1, #0
+            BEQ .Lpause_wait_debounce_sel
+        CMP r7, #0
+        BEQ .Lpause_colorscheme0
+        MOV r7, #0
+        B .Lpause_waitloop_redraw
+.Lpause_colorscheme0:
+        MOV r7, #1
+        B .Lpause_waitloop_redraw
+
+.Lpause_no_colorscheme_cycle:
+        MOV r1, #KEY_UP
         MOV r2, #KEY_DOWN
         ORR r2, r1  // r2 = UP|DOWN
         MOV r3, r2  // r3 = UP|DOWN
@@ -740,7 +837,15 @@ pause:
         ADD r0, #'0'
         MOV r1, r5
         MOV r2, r6
+        CMP r7, #0
+        BNE .Lpause_waitloop_redrawspeed_erase_not0
         MOV r3, #0
+        B .Lpause_waitloop_redrawspeed_erase
+.Lpause_waitloop_redrawspeed_erase_not0:
+        MOV r3, #0x1E
+        LSL r3, #8
+        ADD r3, #0x73
+.Lpause_waitloop_redrawspeed_erase:
         BL Mode3_putchar  // erase last speed
 
         SUB r4, #1  // inc speed
@@ -750,9 +855,17 @@ pause:
         ADD r0, #'0'
         MOV r1, r5
         MOV r2, r6
+        CMP r7, #0
+        BNE .Lpause_wait_redrawspeed_not0
         MOV r3, #0x7F
         LSL r3, #8
         ADD r3, #0xFF
+        B .Lpause_wait_redrawspeed
+.Lpause_wait_redrawspeed_not0:
+        MOV r3, #0x04
+        LSL r3, #8
+        ADD r3, #0xA3
+.Lpause_wait_redrawspeed:
         BL Mode3_putchar  // write new speed
         B .Lpause_waitloop
         
@@ -769,7 +882,15 @@ pause:
         ADD r0, #'0'
         MOV r1, r5
         MOV r2, r6
+        CMP r7, #0
+        BNE .Lpause_wait_redrawspeed_erase2_not0
         MOV r3, #0
+        B .Lpause_wait_redrawspeed_erase2
+.Lpause_wait_redrawspeed_erase2_not0:
+        MOV r3, #0x1E
+        LSL r3, #8
+        ADD r3, #0x73
+.Lpause_wait_redrawspeed_erase2:
         BL Mode3_putchar  // erase last speed
 
         ADD r4, #1  // dec speed
@@ -779,9 +900,17 @@ pause:
         ADD r0, #'0'
         MOV r1, r5
         MOV r2, r6
+        CMP r7, #0
+        BNE .Lpause_wait_redrawspeed2_not0
         MOV r3, #0x7F
         LSL r3, #8
         ADD r3, #0xFF
+        B .Lpause_wait_redrawspeed2
+.Lpause_wait_redrawspeed2_not0:
+        MOV r3, #4
+        LSL r3, #8
+        ADD r3, #0xA3
+.Lpause_wait_redrawspeed2:
         BL Mode3_putchar  // write new speed
         B .Lpause_waitloop
         
@@ -797,18 +926,36 @@ pause:
     ADD r0, #'0'
     MOV r1, r5
     MOV r2, r6
+    CMP r7, #0
+    BNE .Lpause_erase_speed_not0
     MOV r3, #0
+    B .Lpause_erase_speed
+.Lpause_erase_speed_not0:
+    MOV r3, #0x1E
+    LSL r3, #8
+    ADD r3, #0x73
+.Lpause_erase_speed:
     BL Mode3_putchar  // erase last speed
 
     LDR r0, =PAUSE_PROMPT
     MOV r1, #8
-    MOV r2, #32
+    CMP r7, #0
+    BNE .Lpause_eraseprompt_not0
     MOV r3, #0
+    B .Lpause_eraseprompt
+.Lpause_eraseprompt_not0:
+    MOV r3, #0x73
+    MOV r2, #0x1E
+    LSL r2, #8
+    ORR r3, r2
+.Lpause_eraseprompt:
+    MOV r2, #32
     BL Mode3_puts  // erase prompt
 
 
     MOV r0, r4
-    POP {r4-r6}
+    MOV r1, r7
+    POP {r4-r7}
     POP {r3}
     BX r3
 
@@ -816,7 +963,7 @@ pause:
 
     .size pause, .-pause
     
-
+    
 
     .thumb_func
     .align 2
@@ -1069,10 +1216,12 @@ main:
     STRB r2, [r1, r0]
     MOV r0, r1
     LDR r1, =GRID_B
+    MOV r2, #0
     BL draw_grid
     LDR r6, =GRID_B  // r6 = front buffer.
     LDR r7, =GRID_A  // r7 = back buffer.
-
+    MOV r0, #0
+    PUSH {r0}  // second-to-top = color scheme
     MOV r0, #4
     PUSH {r0}  // stack top = game speed
     MOV r4, #CURR_DIR_R  // r4 = current direction
@@ -1098,22 +1247,14 @@ main:
         SUB r1, #1
         CMP r0, r1
         BNE .Lmain_no_pause
-        // For pause menu,
-        // clear screen with fast_memset32(VRAM, 0, <<VRAM screen buffer word count>>)
-        MOV r0, #0xC0
-        LSL r0, #19  // r0 = VRAM start addr
-        MOV r1, #0
-        MOV r3, #80  // logic behind this part explained in block above free_snake_nodes call @ game over code
-        LSL r2, r3, #4
-        SUB r2, r3
-        LSL r2, #4
-        LDR r3, =fast_memset32
-        BL .Llong_call_via_r3
 
         LDR r0, [sp]
+        LDR r1, [sp,#4]
         BL pause
         STR r0, [sp]
+        STR r1, [sp, #4]
         MOV r0, r6
+        LDR r1, [sp, #4]
         BL unpause_redraw_grid
         B .Lmain_first_pass_loop  // Skip the next part, since no direction 
         //                           flag values are -1, so running what's below
@@ -1147,6 +1288,7 @@ main:
 .Lmain_drawgrid:
         MOV r0, r6  // r0 = front buf
         MOV r1, r7  // r1 = back buf
+        LDR r2, [sp, #4]
 
         BL draw_grid
         MOV r0, r6  // temporarily put front buf's addr in r0
