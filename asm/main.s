@@ -45,8 +45,8 @@
 .extern sound_sq1_play
 .extern sound_noise_play
 
-.extern Mode3_puts
-.extern Mode3_putchar
+.extern Mode3_Puts
+.extern Mode3_Putchar
 
     .section .bss
     .align 2
@@ -80,6 +80,7 @@ INITED_LFSR:
 RNG_Seed:
     .hword 0xab38
     .size RNG_Seed, .-RNG_Seed
+
     .align 2
     .global START_PROMPT
 START_PROMPT:
@@ -691,7 +692,7 @@ pause:
     LSL r2, #8
     ORR r3, r2
     MOV r2, #32
-    BL Mode3_puts
+    BL Mode3_Puts
 
     MOV r5, r0  // r5 = speed text x start pos
     MOV r6, r1  // r6 = speed text y start pos
@@ -703,7 +704,7 @@ pause:
     MOV r3, #0x7F
     LSL r3, #8
     ADD r3, #0xFF
-    BL Mode3_putchar
+    BL Mode3_Putchar
 
     
     
@@ -741,7 +742,7 @@ pause:
         MOV r1, r5
         MOV r2, r6
         MOV r3, #0
-        BL Mode3_putchar  // erase last speed
+        BL Mode3_Putchar  // erase last speed
 
         SUB r4, #1  // inc speed
 
@@ -753,7 +754,7 @@ pause:
         MOV r3, #0x7F
         LSL r3, #8
         ADD r3, #0xFF
-        BL Mode3_putchar  // write new speed
+        BL Mode3_Putchar  // write new speed
         B .Lpause_waitloop
         
 .Lpause_waitloop_DOWN:
@@ -770,7 +771,7 @@ pause:
         MOV r1, r5
         MOV r2, r6
         MOV r3, #0
-        BL Mode3_putchar  // erase last speed
+        BL Mode3_Putchar  // erase last speed
 
         ADD r4, #1  // dec speed
         
@@ -782,7 +783,7 @@ pause:
         MOV r3, #0x7F
         LSL r3, #8
         ADD r3, #0xFF
-        BL Mode3_putchar  // write new speed
+        BL Mode3_Putchar  // write new speed
         B .Lpause_waitloop
         
 .Lpause_debounceloop2:
@@ -798,13 +799,13 @@ pause:
     MOV r1, r5
     MOV r2, r6
     MOV r3, #0
-    BL Mode3_putchar  // erase last speed
+    BL Mode3_Putchar  // erase last speed
 
     LDR r0, =PAUSE_PROMPT
     MOV r1, #8
     MOV r2, #32
     MOV r3, #0
-    BL Mode3_puts  // erase prompt
+    BL Mode3_Puts  // erase prompt
 
 
     MOV r0, r4
@@ -999,7 +1000,7 @@ main:
     MOV r3, #0xFF
     ORR r3, r2
     MOV r2, #76 
-    BL Mode3_puts
+    BL Mode3_Puts
     B .Lmain_skip_redprompt
 
 .Lmain_prompt_red:
@@ -1007,7 +1008,7 @@ main:
     MOV r1, #70
     MOV r2, #76 
     MOV r3, #31
-    BL Mode3_puts
+    BL Mode3_Puts
 
 .Lmain_skip_redprompt:
     LDR r0, =INITED_LFSR
@@ -1035,7 +1036,7 @@ main:
     MOV r1, #70
     MOV r2, #76 
     MOV r3, #0
-    BL Mode3_puts
+    BL Mode3_Puts
 
     /*BL lfsr_rand
     MOV r1, #150

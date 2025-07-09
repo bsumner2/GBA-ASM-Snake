@@ -1,7 +1,15 @@
-    // I hate to include libc functions, but I'm not about to write my own memory
-    // arena for a SNAKE GAME.
-    .extern free
-    .extern malloc
+    .extern Snake_Free16
+    .extern Snake_Malloc16
+    .extern Mode3_Puts
+// #define Snake_Free16 free
+// #define Snake_Malloc16 malloc
+    .section .rodata
+    .align 2
+    .type ALLOC_ERR_MSG %object
+ALLOC_ERR_MSG:
+    .asciz "Snake_Malloc16 returned NULL"
+    .size ALLOC_ERR_MSG, .-ALLOC_ERR_MSG
+
 
 #define SIZEOF_NODE 12
 /*
@@ -72,16 +80,17 @@ node_alloc:
     // r3 = prev ptr
     PUSH {r4, r5, r6, r7, lr}
     
-    // Save param vals to GP regs b4 calling malloc
+    // Save param vals to GP regs b4 calling Snake_Malloc16
     MOV r4, r0  // r4 = r0 = x
     MOV r5, r1  // r5 = r1 = y
     MOV r6, r2  // r6 = r2 = next ptr
     MOV r7, r3  // r7 = r3 = prev
     
-    // Move malloc param value into r0
+    // Move Snake_Malloc16 param value into r0
     MOV r0, #SIZEOF_NODE
-    BL malloc
-    
+    BL Snake_Malloc16
+    CMP r0, #0
+    BEQ .Lnode_alloc_NULL
     STRH r4, [r0]  // *((u16*) (&node + 0)) = node.x = r4 = x coord
     STRH r5, [r0, #2]  // *((u16*) (&node + 2)) = node.y = r5 = y coord
     STR r6, [r0, #4]  // *((node**) (&node + 4)) = node.next = r6 = front link ptr
@@ -90,6 +99,15 @@ node_alloc:
     POP {r4-r7}
     POP {r1}
     BX r1
+.Lnode_alloc_NULL:
+    LDR r0, =ALLOC_ERR_MSG
+    MOV r1, #0
+    MOV r2, #0
+    MOV r3, #31
+    BL Mode3_Puts
+.Lnode_alloc_NULL_loop:
+        SVC #0x05
+        B .Lnode_alloc_NULL_loop
     .size node_alloc, .-node_alloc
 
 
@@ -120,6 +138,7 @@ snake_grow:
 
     // CALL: node_alloc(newhead.x : x_coord, newhead.y : y_coord, oldhead : next, tail : prev)
     BL node_alloc
+
     
     LDR r1, [r4]  // r1 = LL->head = old head
     STR r0, [r4]  // LL->head = new head
@@ -277,23 +296,25 @@ snake_init:
     .global free_snake_nodes
     .type free_snake_nodes %function
 free_snake_nodes:
-    PUSH {r4, r5, r6, lr}
+    PUSH {r4-r6, lr}
     LDR r4, =S_Snake_Body  // r4 = LL
     LDR r5, [r4]  // r5 = LL->head
     LDRH r6, [r4, #8]  // r6 = LL->len
-    B .Lfreenodes_contcheck
+    CMP r6, #0
+    BEQ .Lfreenodes_already_empty
 
 .Lfreenodes_loop:
         MOV r0, r5  // Move curr node, r5, into r0 for freeing
         LDR r5, [r0, #4]  // r5 = node->next
 
-        BL free
+        BL Snake_Free16
 
         SUB r6, #1
 .Lfreenodes_contcheck:
         CMP r6, #0
         BNE .Lfreenodes_loop
 
+.Lfreenodes_already_empty:
     MOV r0, #0
     STR r0, [r4]  // LL->head = NULL
     STR r0, [r4, #4]  // LL->tail = NULL
